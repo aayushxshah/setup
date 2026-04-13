@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+
+# Language installation flags
+INSTALL_RUST=false
+INSTALL_GO=false
+INSTALL_NODE=false
+INSTALL_PYTHON=false
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --rust)
+      INSTALL_RUST=true
+      shift
+      ;;
+    --go)
+      INSTALL_GO=true
+      shift
+      ;;
+    --node)
+      INSTALL_NODE=true
+      shift
+      ;;
+    --python)
+      INSTALL_PYTHON=true
+      shift
+      ;;
+    --all)
+      INSTALL_RUST=true
+      INSTALL_GO=true
+      INSTALL_NODE=true
+      INSTALL_PYTHON=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      echo "Usage: $0 [--rust] [--go] [--node] [--python] [--all]"
+      exit 1
+      ;;
+  esac
+done
+
+# If no arguments provided, prompt user interactively
+if [ "$INSTALL_RUST" = false ] && [ "$INSTALL_GO" = false ] && [ "$INSTALL_NODE" = false ] && [ "$INSTALL_PYTHON" = false ]; then
+  echo "Which languages would you like to install?"
+  read -p "Install Rust? (y/n) " -n 1 -r
+  echo
+  [[ $REPLY =~ ^[Yy]$ ]] && INSTALL_RUST=true
+
+  read -p "Install Go? (y/n) " -n 1 -r
+  echo
+  [[ $REPLY =~ ^[Yy]$ ]] && INSTALL_GO=true
+
+  read -p "Install Node.js? (y/n) " -n 1 -r
+  echo
+  [[ $REPLY =~ ^[Yy]$ ]] && INSTALL_NODE=true
+
+  read -p "Install Python tools (uv)? (y/n) " -n 1 -r
+  echo
+  [[ $REPLY =~ ^[Yy]$ ]] && INSTALL_PYTHON=true
+fi
+
+echo ""
+echo "Installation configuration:"
+echo "  Rust: $INSTALL_RUST"
+echo "  Go: $INSTALL_GO"
+echo "  Node.js: $INSTALL_NODE"
+echo "  Python: $INSTALL_PYTHON"
+echo ""
+
+function check_and_write() {
+  local comment="$1"
+  shift
+  local str="$1"
+  shift
+  local f="$1"
+
+  if ! grep -q "$str" "$f"; then
+    echo >>"$f"
+    echo "$comment" >>"$f"
+    echo "$str" >>"$f"
+  fi
+}
+
+function link() {
+  local src="$1"
+  shift
+  local target="$1"
+  if [ ! -L "$target" ]; then
+    ln -s "$src" "$target"
+  fi
+}
+
+# Install or skip if already installed
+function brew_install() {
+  local package="$1"
+  if brew list "$package" &>/dev/null; then
+    echo "$package already installed"
+  else
+    echo "Installing $package..."
+    brew install "$package"
+  fi
+}
+
+echo "Checking for Homebrew..."
+if ! command -v brew &>/dev/null; then
+  echo "Installing Homebrew..."
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+else
+  echo "Homebrew already installed"
+fi
+
+# Check for SSH key
+echo ""
+echo "Checking for SSH key..."
+if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+  echo "No SSH key found at ~/.ssh/id_ed25519"
+  read -p "Enter your email for the SSH key: " email
+  if [ -z "$email" ]; then
+    echo "Error: Email is required to generate SSH key"
+    exit 1
+  fi
+
+  mkdir -p "$HOME/.ssh"
+  ssh-keygen -t ed25519 -C "$email" -f "$HOME/.ssh/id_ed25519" -N ""
+  chmod 600 "$HOME/.ssh/id_ed25519"
+  chmod 644 "$HOME/.ssh/id_ed25519.pub"
+
+  echo "SSH key generated successfully at ~/.ssh/id_ed25519"
+  echo "Public key:"
+  cat "$HOME/.ssh/id_ed25519.pub"
+else
+  echo "SSH key already exists at ~/.ssh/id_ed25519"
+fi
+
+echo "Install required packages via Homebrew"
+brew_install fzf
+brew_install jq
+brew_install eza
+brew_install bat
+brew_install ripgrep
+brew_install xh
+brew_install zellij
+brew_install zoxide
+brew_install difftastic
+brew_install starship
+
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+  echo "Installing oh-my-zsh"
+  export RUNZSH=no
+  export CHSH=no
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+else
+  echo "oh-my-zsh already installed"
+fi
+
+# Add fzf to oh-my-zsh plugins
+if grep -q "^plugins=" "$HOME/.zshrc"; then
+  if ! grep -q "fzf" "$HOME/.zshrc"; then
+    sed -i '' 's/^plugins=(\(.*\))$/plugins=(\1 fzf)/' "$HOME/.zshrc"
+    echo "Added fzf to oh-my-zsh plugins"
+  fi
+fi
+
+touch "$HOME/.devrc"
+check_and_write '# configure dev system' 'source $HOME/.devrc' "$HOME/.zshrc"
+
+# Check for uv (Python package installer)
+if [ "$INSTALL_PYTHON" = true ]; then
+  uv_bin=$(which uv 2>/dev/null)
+  if [ ! -x "$uv_bin" ]; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh || (echo "uv not found and not able to install" && exit 1)
+    export PATH="$HOME/.local/bin:$PATH"
+  else
+    echo "uv already installed"
+  fi
+
+  check_and_write '# uv path' 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.devrc"
+fi
+
+check_and_write "# starship prompt" 'eval "$(starship init zsh)"' "$HOME/.devrc"
+
+# Check for Go
+if [ "$INSTALL_GO" = true ]; then
+  go_bin=$(which go 2>/dev/null)
+  if [ ! -x "$go_bin" ]; then
+    echo "Installing Go..."
+    brew_install go
+  else
+    echo "go already installed"
+  fi
+fi
+
+# Check for NVM and Node.js
+if [ "$INSTALL_NODE" = true ]; then
+  if [ ! -d "$HOME/.nvm" ]; then
+    echo "Installing NVM..."
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+  else
+    echo "nvm already installed"
+  fi
+
+  check_and_write "# nvm dir" 'export NVM_DIR="$HOME/.nvm"' "$HOME/.devrc"
+  check_and_write "# nvm env" 'source "$NVM_DIR/nvm.sh"' "$HOME/.devrc"
+
+  # Check for Node.js
+  node_bin=$(which node 2>/dev/null)
+  if [ ! -x "$node_bin" ]; then
+    echo "Installing Node.js..."
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    nvm install --lts
+  fi
+
+  # Check for Yarn
+  yarn_bin=$(which yarn 2>/dev/null)
+  if [ ! -x "$yarn_bin" ]; then
+    echo "Installing Yarn..."
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    npm install -g yarn
+  fi
+
+  # Check for TypeScript
+  tsc_bin=$(which tsc 2>/dev/null)
+  if [ ! -x "$tsc_bin" ]; then
+    echo "Installing TypeScript..."
+    export NVM_DIR="$HOME/.nvm"
+    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    npm install -g typescript
+  fi
+fi
+
+# Install aliases
+dev_dir=$(dirname "$(realpath "$0")")
+check_and_write "# aliases" 'source "$HOME/.dev/aliases"' "$HOME/.devrc"
+check_and_write "# user defined aliases" 'source "$HOME/.aliases" &>/dev/null' "$HOME/.devrc"
+
+# Install git
+if [ -f "$HOME/.gitconfig" ]; then
+  echo "Backing up existing gitconfig to $HOME/.gitconfig.bak"
+  mv "$HOME/.gitconfig" "$HOME/.gitconfig.bak"
+fi
+echo "Installing gitconfig to $HOME/.gitconfig"
+cp "$dev_dir/gitconfig" "$HOME/.gitconfig"
+
+
+link "$dev_dir/vimrc" "$HOME/.vimrc"
+if [ ! -f "$HOME/.vim/colors/solarized.vim" ]; then
+  echo "Installing solarized vim colors"
+  curl -fsSL https://raw.github.com/altercation/vim-colors-solarized/master/colors/solarized.vim -o solarized.vim
+  mkdir -p "$HOME/.vim/colors"
+  mv solarized.vim "$HOME/.vim/colors"
+fi
+
+if [ ! -f "$HOME/.just" ]; then
+  echo "installing just completions"
+  just --completions zsh >"$HOME/.just"
+fi
+
+check_and_write '# Enable just completions' 'source "$HOME/.just"' "$HOME/.devrc"
+
+# Configure starship
+mkdir -p "$HOME/.config"
+link "$dev_dir/starship.toml" "$HOME/.config/starship.toml"
+
+check_and_write '# initialize zoxide' 'eval "$(zoxide init zsh)"' "$HOME/.devrc"
+
+echo "dev installation complete"
+echo "source your .zshrc or exit the shell to reload your configuration"

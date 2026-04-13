@@ -1,0 +1,77 @@
+# Easier navigation: .., ..., ...., ....., ~ and -
+alias ..="cd .."
+alias ...="cd ../.."
+alias ....="cd ../../.."
+alias .....="cd ../../../.."
+alias ~="cd ~" # `cd` is probably faster to type though
+alias -- -="cd -"
+
+# Shortcuts
+alias j="just"
+alias c="clear"
+
+# rust aliases
+alias ls="eza"
+alias cat="bat -p"
+alias l="eza"
+alias ll="eza --long --header"
+alias lt="eza --long --header --tree"
+alias llg="eza --long --header --git"
+alias la="eza --long --all"
+alias lsd="eza --all --only-dirs"
+alias diff="difft"
+
+# Enable aliases to be sudo’ed
+alias sudo='sudo '
+
+# Get week number
+alias week='date +%V'
+
+# Stopwatch
+alias timer='echo "Timer started. Stop with Ctrl-D." && date && time cat && date'
+
+# git is just g
+alias g="git"
+
+# python is python3
+alias python="python3"
+
+# top is bottom
+alias top="btm"
+
+# source shortcuts
+alias sb="source ~/.zshrc"
+alias sd="source ~/.devrc"
+
+# k8s aliases
+alias kcns="kubectl config set-context --current --namespace"
+alias kg="kubectl get"
+alias kd="kubectl describe"
+alias kcc="kubectl config current-context"
+alias kuc="kubectl config use-context"
+
+# git aliases
+alias gst="git status"
+alias gcm="git commit -m"
+alias gpl="git pull"
+alias gps="git push"
+alias gco="git checkout"
+alias gcb="git checkout -B"
+alias gast="git add . && git status"
+alias grv="git remote -v"
+alias gl="git log"
+alias sc="select-cluster"
+alias gs="git switch"
+
+# zellij
+alias zj="zellij"
+alias zja="zellij attach"
+alias zjl="zellij --layout"
+
+# cloud
+alias gcp="gcloud"
+
+# other
+alias lg="eza --long --all | grep"
+
+
