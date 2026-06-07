@@ -43,6 +43,9 @@ alias top="btm"
 alias sb="source ~/.zshrc"
 alias sd="source ~/.devrc"
 
+# nvim
+alias vi="nvim"
+
 # k8s aliases
 alias kcns="kubectl config set-context --current --namespace"
 alias kg="kubectl get"
