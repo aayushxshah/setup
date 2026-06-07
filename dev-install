@@ -84,9 +84,12 @@ function check_and_write() {
 
 function link() {
   local src="$1"
-  shift
-  local target="$1"
-  if [ ! -L "$target" ]; then
+  local target="$2"
+  if [ -L "$target" ]; then
+    : # already a symlink, leave it
+  elif [ -e "$target" ]; then
+    echo "Skipping $target — already exists as a real file/directory (remove it manually to link)"
+  else
     ln -s "$src" "$target"
   fi
 }
@@ -144,6 +147,8 @@ brew_install zellij
 brew_install zoxide
 brew_install difftastic
 brew_install starship
+brew_install neovim
+brew_install zsh-autosuggestions
 
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
   echo "Installing oh-my-zsh"
@@ -240,15 +245,11 @@ check_and_write "# aliases" 'source "$HOME/.dev/aliases"' "$HOME/.devrc"
 check_and_write "# user defined aliases" 'source "$HOME/.aliases" &>/dev/null' "$HOME/.devrc"
 
 # Install git
-if [ -f "$HOME/.gitconfig" ]; then
-  echo "Backing up existing gitconfig to $HOME/.gitconfig.bak"
-  mv "$HOME/.gitconfig" "$HOME/.gitconfig.bak"
-fi
-echo "Installing gitconfig to $HOME/.gitconfig"
-cp "$dev_dir/gitconfig" "$HOME/.gitconfig"
+link "$dev_dir/gitconfig" "$HOME/.gitconfig"
 
 
 link "$dev_dir/vimrc" "$HOME/.vimrc"
+link "$dev_dir/nvim" "$HOME/.config/nvim"
 if [ ! -f "$HOME/.vim/colors/solarized.vim" ]; then
   echo "Installing solarized vim colors"
   curl -fsSL https://raw.github.com/altercation/vim-colors-solarized/master/colors/solarized.vim -o solarized.vim
@@ -268,6 +269,7 @@ mkdir -p "$HOME/.config"
 link "$dev_dir/starship.toml" "$HOME/.config/starship.toml"
 
 check_and_write '# initialize zoxide' 'eval "$(zoxide init zsh)"' "$HOME/.devrc"
+check_and_write '# zsh-autosuggestions' 'source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh' "$HOME/.devrc"
 
 echo "dev installation complete"
 echo "source your .zshrc or exit the shell to reload your configuration"
