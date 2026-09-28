@@ -1,0 +1,27 @@
+if (( $+commands[starship] )); then
+  eval "$(starship init zsh)"
+fi
+
+if (( $+commands[fzf] )); then
+  source <(fzf --zsh)
+fi
+
+if (( $+commands[kubectl] )); then
+  source <(kubectl completion zsh)
+fi
+
+if (( $+commands[wt] )); then
+  eval "$(wt config shell init zsh)"
+fi
+
+source "$HOME/.dev/aliases"
+
+if (( $+commands[zoxide] )); then
+  eval "$(zoxide init zsh)"
+fi
+
+if (( $+commands[brew] )); then
+  ZSH_AUTOSUGGESTIONS="$(brew --prefix zsh-autosuggestions 2>/dev/null)/share/zsh-autosuggestions/zsh-autosuggestions.zsh"
+  [[ -f "$ZSH_AUTOSUGGESTIONS" ]] && source "$ZSH_AUTOSUGGESTIONS"
+  unset ZSH_AUTOSUGGESTIONS
+fi
