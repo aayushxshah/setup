@@ -1,5 +1,14 @@
 #!/usr/bin/env bash
 
+set -e
+
+OS="$(uname -s)"
+
+if [ "$OS" != "Darwin" ] && [ "$OS" != "Linux" ]; then
+  echo "Unsupported operating system: $OS"
+  exit 1
+fi
+
 # Language installation flags
 INSTALL_RUST=false
 INSTALL_GO=false
@@ -68,20 +77,6 @@ echo "  Node.js: $INSTALL_NODE"
 echo "  Python: $INSTALL_PYTHON"
 echo ""
 
-function check_and_write() {
-  local comment="$1"
-  shift
-  local str="$1"
-  shift
-  local f="$1"
-
-  if ! grep -q "$str" "$f"; then
-    echo >>"$f"
-    echo "$comment" >>"$f"
-    echo "$str" >>"$f"
-  fi
-}
-
 function link() {
   local src="$1"
   local target="$2"
@@ -105,12 +100,34 @@ function brew_install() {
   fi
 }
 
+if [ "$OS" = "Linux" ]; then
+  if [ ! -f /etc/os-release ] || ! grep -Eq '^(ID|ID_LIKE)=.*ubuntu' /etc/os-release; then
+    echo "Warning: this Linux installer is tested on Ubuntu only."
+  fi
+
+  echo "Installing Ubuntu prerequisites..."
+  sudo apt-get update
+  sudo apt-get install -y build-essential procps curl file git zsh
+fi
+
 echo "Checking for Homebrew..."
 if ! command -v brew &>/dev/null; then
   echo "Installing Homebrew..."
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 else
   echo "Homebrew already installed"
+fi
+
+# Homebrew is installed outside the default PATH on a fresh Ubuntu system.
+if [ "$OS" = "Linux" ] && [ -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+  eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+elif [ "$OS" = "Darwin" ] && [ -x /opt/homebrew/bin/brew ]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
+if ! command -v brew &>/dev/null; then
+  echo "Homebrew was installed but could not be found on PATH."
+  exit 1
 fi
 
 # Check for SSH key
@@ -149,26 +166,9 @@ brew_install difftastic
 brew_install starship
 brew_install neovim
 brew_install zsh-autosuggestions
-
-if [ ! -d "$HOME/.oh-my-zsh" ]; then
-  echo "Installing oh-my-zsh"
-  export RUNZSH=no
-  export CHSH=no
-  sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-else
-  echo "oh-my-zsh already installed"
-fi
-
-# Add fzf to oh-my-zsh plugins
-if grep -q "^plugins=" "$HOME/.zshrc"; then
-  if ! grep -q "fzf" "$HOME/.zshrc"; then
-    sed -i '' 's/^plugins=(\(.*\))$/plugins=(\1 fzf)/' "$HOME/.zshrc"
-    echo "Added fzf to oh-my-zsh plugins"
-  fi
-fi
-
-touch "$HOME/.devrc"
-check_and_write '# configure dev system' 'source $HOME/.devrc' "$HOME/.zshrc"
+brew_install worktrunk
+brew_install just
+brew_install bottom
 
 # Check for uv (Python package installer)
 if [ "$INSTALL_PYTHON" = true ]; then
@@ -181,10 +181,7 @@ if [ "$INSTALL_PYTHON" = true ]; then
     echo "uv already installed"
   fi
 
-  check_and_write '# uv path' 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.devrc"
 fi
-
-check_and_write "# starship prompt" 'eval "$(starship init zsh)"' "$HOME/.devrc"
 
 # Check for Go
 if [ "$INSTALL_GO" = true ]; then
@@ -197,57 +194,31 @@ if [ "$INSTALL_GO" = true ]; then
   fi
 fi
 
-# Check for NVM and Node.js
+# Install Node.js without a shell version manager
 if [ "$INSTALL_NODE" = true ]; then
-  if [ ! -d "$HOME/.nvm" ]; then
-    echo "Installing NVM..."
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-  else
-    echo "nvm already installed"
-  fi
+  brew_install node
 
-  check_and_write "# nvm dir" 'export NVM_DIR="$HOME/.nvm"' "$HOME/.devrc"
-  check_and_write "# nvm env" 'source "$NVM_DIR/nvm.sh"' "$HOME/.devrc"
-
-  # Check for Node.js
-  node_bin=$(which node 2>/dev/null)
-  if [ ! -x "$node_bin" ]; then
-    echo "Installing Node.js..."
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-    nvm install --lts
-  fi
-
-  # Check for Yarn
-  yarn_bin=$(which yarn 2>/dev/null)
-  if [ ! -x "$yarn_bin" ]; then
+  if ! command -v yarn &>/dev/null; then
     echo "Installing Yarn..."
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     npm install -g yarn
   fi
 
-  # Check for TypeScript
-  tsc_bin=$(which tsc 2>/dev/null)
-  if [ ! -x "$tsc_bin" ]; then
+  if ! command -v tsc &>/dev/null; then
     echo "Installing TypeScript..."
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     npm install -g typescript
   fi
 fi
 
-# Install aliases
 dev_dir=$(dirname "$(realpath "$0")")
-check_and_write "# aliases" 'source "$HOME/.dev/aliases"' "$HOME/.devrc"
-check_and_write "# user defined aliases" 'source "$HOME/.aliases" &>/dev/null' "$HOME/.devrc"
+mkdir -p "$HOME/.dev"
+link "$dev_dir/aliases" "$HOME/.dev/aliases"
+link "$dev_dir/zshrc" "$HOME/.zshrc"
+link "$dev_dir/devrc" "$HOME/.devrc"
 
 # Install git
 link "$dev_dir/gitconfig" "$HOME/.gitconfig"
 
-
+mkdir -p "$HOME/.config"
 link "$dev_dir/vimrc" "$HOME/.vimrc"
 link "$dev_dir/nvim" "$HOME/.config/nvim"
 if [ ! -f "$HOME/.vim/colors/solarized.vim" ]; then
@@ -257,19 +228,8 @@ if [ ! -f "$HOME/.vim/colors/solarized.vim" ]; then
   mv solarized.vim "$HOME/.vim/colors"
 fi
 
-if [ ! -f "$HOME/.just" ]; then
-  echo "installing just completions"
-  just --completions zsh >"$HOME/.just"
-fi
-
-check_and_write '# Enable just completions' 'source "$HOME/.just"' "$HOME/.devrc"
-
 # Configure starship
-mkdir -p "$HOME/.config"
 link "$dev_dir/starship.toml" "$HOME/.config/starship.toml"
-
-check_and_write '# initialize zoxide' 'eval "$(zoxide init zsh)"' "$HOME/.devrc"
-check_and_write '# zsh-autosuggestions' 'source $(brew --prefix)/share/zsh-autosuggestions/zsh-autosuggestions.zsh' "$HOME/.devrc"
 
 echo "dev installation complete"
 echo "source your .zshrc or exit the shell to reload your configuration"
